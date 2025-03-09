@@ -6,15 +6,75 @@ from pydub import AudioSegment
 import librosa
 import numpy as np
 
-def process_clip(video_path):
+def ask_yes_no(question):
     """
-    Process a single video clip:
-    - Extract transcription using a more accurate method.
-    - Determine the best take for repeated sentences.
-    - Trim the video accordingly.
-    - Normalize and reduce noise in audio.
+    Helper function to ask yes/no questions in the command line.
+    Returns True for 'yes' and False for 'no'.
+    """
+    while True:
+        answer = input(question + " (y/n): ").strip().lower()
+        if answer == "y":
+            return True
+        elif answer == "n":
+            return False
+        else:
+            print("Invalid input. Please enter 'y' or 'n'.")
+
+def setup_configuration():
+    """
+    Interactive setup that asks the user which features they want to enable.
+    """
+    print("Welcome to the interactive setup!")
     
-    Returns a processed VideoFileClip object.
+    config = {}
+
+    # Ask if they want to enable transcription
+    config["enable_transcription"] = ask_yes_no("Do you want to enable transcription?")
+    
+    # Ask if they want to enable audio normalization
+    config["enable_audio_normalization"] = ask_yes_no("Do you want to enable audio normalization?")
+    
+    # Ask if they want to enable noise reduction
+    config["enable_noise_reduction"] = ask_yes_no("Do you want to enable noise reduction?")
+    
+    # Ask if they want to use best take selection
+    config["use_best_take_selection"] = ask_yes_no("Do you want to use best take selection?")
+    
+    # Ask if they want to enable fade transitions
+    config["enable_fade_transitions"] = ask_yes_no("Do you want to enable fade transitions?")
+    
+    # Ask for minimum clip length
+    while True:
+        try:
+            min_clip_length = float(input("Enter the minimum clip length (in seconds): ").strip())
+            if min_clip_length > 0:
+                config["min_clip_length"] = min_clip_length
+                break
+            else:
+                print("Please enter a positive number.")
+        except ValueError:
+            print("Invalid input. Please enter a valid number.")
+    
+    # Ask for fade duration
+    while True:
+        try:
+            fade_duration = float(input("Enter the fade duration (in seconds): ").strip())
+            if fade_duration >= 0:
+                config["fade_duration"] = fade_duration
+                break
+            else:
+                print("Please enter a non-negative number.")
+        except ValueError:
+            print("Invalid input. Please enter a valid number.")
+
+    return config
+
+# Load the user configuration
+config = setup_configuration()
+
+def process_clip(video_path, config):
+    """
+    Process a single video clip based on user-defined configuration.
     """
     try:
         clip = VideoFileClip(video_path)
@@ -23,108 +83,108 @@ def process_clip(video_path):
         return None
 
     # Check for clip length (if it's too short to process)
-    if clip.duration < 1:  # Assuming 1 second as the minimum valid length
+    if clip.duration < config["min_clip_length"]:
         log(f"Clip {video_path} is too short to process. Skipping.")
         return None
 
-    # Transcribe video (improve transcription method)
-    try:
-        transcript_segments = transcribe_video(video_path)
-    except Exception as e:
-        log(f"Error transcribing video {video_path}: {e}")
-        return clip  # Fallback to using the full clip
+    # Transcribe video if enabled
+    transcript_segments = None
+    if config["enable_transcription"]:
+        try:
+            transcript_segments = transcribe_video(video_path)
+        except Exception as e:
+            log(f"Error transcribing video {video_path}: {e}")
 
-    # Handle cases where transcript is empty or too short
-    if not transcript_segments:
+    if transcript_segments is None or not transcript_segments:
         log(f"No transcript found for {video_path}, using full clip.")
         return clip
     
-    # Use better logic to select the best take (use timestamps to handle repeated parts)
-    best_segment = select_best_take(transcript_segments)
-    if best_segment is None:
-        log(f"No best segment found for {video_path}, using full clip.")
-        return clip
-
-    start, end = best_segment
-    try:
-        processed_clip = clip.subclip(start, end)
-        log(f"Trimmed {video_path} from {start} to {end}")
-    except Exception as e:
-        log(f"Error trimming video {video_path}: {e}")
-        return clip
+    # Use better logic to select the best take if enabled
+    if config["use_best_take_selection"]:
+        best_segment = select_best_take(transcript_segments)
+        if best_segment:
+            start, end = best_segment
+            try:
+                clip = clip.subclip(start, end)
+                log(f"Trimmed {video_path} from {start} to {end}")
+            except Exception as e:
+                log(f"Error trimming video {video_path}: {e}")
     
-    # Process audio for normalization and noise reduction
-    processed_clip = normalize_and_denoise_audio(processed_clip)
-    
-    return processed_clip
+    # Process audio if enabled
+    if config["enable_audio_normalization"]:
+        clip = normalize_audio(clip)
+    if config["enable_noise_reduction"]:
+        clip = reduce_noise(clip)
 
-def select_best_take(transcript_segments):
-    """
-    Given transcript segments, select the best take by avoiding repeated phrases.
-    This logic will improve the take selection process by using timestamps to identify the best portion.
-    
-    Each transcript segment is expected to be a dict:
-    { 'sentence': str, 'start': float, 'end': float }
-    """
-    if not transcript_segments:
-        return None
+    return clip
 
-    # For now, this logic simply returns the first non-repeating segment.
-    # You can improve this by analyzing pauses or using NLP techniques to detect repeated phrases.
-    best = transcript_segments[0]
-    return best.get("start", 0), best.get("end", best.get("start", 0) + 5)
-
-def normalize_and_denoise_audio(clip):
+def normalize_audio(clip):
     """
-    Normalize and reduce noise in the audio of the clip.
+    Normalize audio volume.
     """
     try:
-        # Extract audio from video clip and save it as a temporary file
         audio = clip.audio
         audio_filename = "temp_audio.wav"
         audio.write_audiofile(audio_filename)
 
-        # Normalize audio and reduce noise using pydub and librosa
+        # Normalize audio using pydub
         audio_clip = AudioSegment.from_wav(audio_filename)
-
-        # Normalize audio volume
         audio_clip = audio_clip - audio_clip.dBFS  # Normalize to 0 dBFS
 
-        # Reduce noise (this is a simple placeholder for more complex noise reduction)
+        # Replace audio with normalized version
+        denoised_audio = AudioSegment.from_wav("denoised_audio.wav")
+        clip = clip.set_audio(denoised_audio)
+
+        os.remove(audio_filename)
+        os.remove("denoised_audio.wav")
+    except Exception as e:
+        log(f"Error in audio normalization: {e}")
+    return clip
+
+def reduce_noise(clip):
+    """
+    Reduce background noise using librosa.
+    """
+    try:
+        audio_filename = "temp_audio.wav"
+        clip.audio.write_audiofile(audio_filename)
         y, sr = librosa.load(audio_filename, sr=None)
         y_denoised = librosa.effects.preemphasis(y)
         librosa.output.write_wav("denoised_audio.wav", y_denoised, sr)
 
-        # Load the denoised audio
-        denoised_audio_clip = AudioSegment.from_wav("denoised_audio.wav")
-        denoised_audio_filename = "denoised_audio.wav"
-
-        # Replace the audio of the video clip with the denoised version
-        denoised_audio = AudioFileClip(denoised_audio_filename)
+        denoised_audio = AudioFileClip("denoised_audio.wav")
         clip = clip.set_audio(denoised_audio)
 
-        os.remove(audio_filename)  # Clean up temporary files
-        os.remove(denoised_audio_filename)
-
-        return clip
-
+        os.remove(audio_filename)
+        os.remove("denoised_audio.wav")
     except Exception as e:
-        log(f"Error in audio normalization or denoising: {e}")
-        return clip  # Return the original clip in case of failure
+        log(f"Error in noise reduction: {e}")
+    return clip
 
-def merge_clips(clips):
+def select_best_take(transcript_segments):
     """
-    Merge a list of VideoFileClip objects into a single clip.
-    This version adds fade-in and fade-out transitions to make the cut seamless.
+    Select the best take based on transcript segments.
+    """
+    if not transcript_segments:
+        return None
+
+    # Here, we simply return the first segment for simplicity.
+    # For more advanced behavior, this could be modified.
+    best = transcript_segments[0]
+    return best.get("start", 0), best.get("end", best.get("start", 0) + 5)
+
+def merge_clips(clips, config):
+    """
+    Merge video clips with fade transitions if enabled.
     """
     try:
-        # Applying fade-in/out transitions to clips for seamless merging
-        for i in range(len(clips)-1):
-            clips[i] = clips[i].fadeout(0.5)  # Adding 0.5 seconds fade-out to each clip
+        # Apply fade transitions if enabled
+        if config["enable_fade_transitions"]:
+            for i in range(len(clips)-1):
+                clips[i] = clips[i].fadeout(config["fade_duration"])
 
         final_clip = concatenate_videoclips(clips, method="compose")
         return final_clip
     except Exception as e:
         log(f"Error merging clips: {e}")
         raise
-
