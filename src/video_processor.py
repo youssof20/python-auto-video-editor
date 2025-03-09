@@ -25,7 +25,7 @@ def process_clip(video_path):
         log(f"Error transcribing video {video_path}: {e}")
         return clip  # Fallback to using the full clip
 
-    # Determine the best segment
+    # Determine the best segment (Currently selecting first segment)
     best_segment = select_best_take(transcript_segments)
     if best_segment is None:
         log(f"No best segment found for {video_path}, using full clip.")
