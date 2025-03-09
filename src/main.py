@@ -2,8 +2,12 @@ import argparse
 import os
 import sys
 from video_processor import process_clip, merge_clips
+from utils import log
 
 def parse_args():
+    """
+    Parse command-line arguments.
+    """
     parser = argparse.ArgumentParser(
         description="Process video clips to trim out repeats and merge the best takes."
     )
@@ -18,6 +22,10 @@ def parse_args():
 def main():
     args = parse_args()
     
+    # Ensure the input folder exists
+    if not os.path.exists(args.input_folder):
+        sys.exit(f"Input folder '{args.input_folder}' does not exist.")
+
     # Get list of video files ordered by filename
     try:
         files = sorted([
@@ -39,7 +47,7 @@ def main():
             if clip is not None:
                 processed_clips.append(clip)
         except Exception as e:
-            print(f"Error processing {file}: {e}")
+            log(f"Error processing {file}: {e}")
     
     if not processed_clips:
         sys.exit("No clips processed successfully.")
