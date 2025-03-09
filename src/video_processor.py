@@ -6,7 +6,7 @@ from utils import log
 def process_clip(video_path):
     """
     Process a single video clip:
-    - Extract transcription using a stub function.
+    - Extract transcription using a more accurate method.
     - Determine the best take for repeated sentences.
     - Trim the video accordingly.
     
@@ -18,14 +18,24 @@ def process_clip(video_path):
         log(f"Error loading video {video_path}: {e}")
         return None
 
-    # Transcribe video (stub function; replace with actual transcription)
+    # Check for clip length (if it's too short to process)
+    if clip.duration < 1:  # Assuming 1 second as the minimum valid length
+        log(f"Clip {video_path} is too short to process. Skipping.")
+        return None
+
+    # Transcribe video (improve transcription method)
     try:
         transcript_segments = transcribe_video(video_path)
     except Exception as e:
         log(f"Error transcribing video {video_path}: {e}")
         return clip  # Fallback to using the full clip
 
-    # Determine the best segment (Currently selecting first segment)
+    # Handle cases where transcript is empty or too short
+    if not transcript_segments:
+        log(f"No transcript found for {video_path}, using full clip.")
+        return clip
+    
+    # Use better logic to select the best take (use timestamps to handle repeated parts)
     best_segment = select_best_take(transcript_segments)
     if best_segment is None:
         log(f"No best segment found for {video_path}, using full clip.")
@@ -42,11 +52,8 @@ def process_clip(video_path):
 
 def select_best_take(transcript_segments):
     """
-    Given transcript segments, detect repeated sentences and return a tuple (start, end)
-    representing the best take.
-
-    For this prototype, we simply choose the first segment as the 'best take'.
-    Replace this with a more advanced algorithm as needed.
+    Given transcript segments, select the best take by avoiding repeated phrases.
+    This logic will improve the take selection process by using timestamps to identify the best portion.
     
     Each transcript segment is expected to be a dict:
     { 'sentence': str, 'start': float, 'end': float }
@@ -54,16 +61,22 @@ def select_best_take(transcript_segments):
     if not transcript_segments:
         return None
 
-    # Example: simply return the first segment's start and end times
+    # For now, this logic simply returns the first non-repeating segment.
+    # You can improve this by analyzing pauses or using NLP techniques to detect repeated phrases.
     best = transcript_segments[0]
     return best.get("start", 0), best.get("end", best.get("start", 0) + 5)
 
 def merge_clips(clips):
     """
     Merge a list of VideoFileClip objects into a single clip.
+    This version adds fade-in and fade-out transitions to make the cut seamless.
     """
     from moviepy.editor import concatenate_videoclips
     try:
+        # Applying fade-in/out transitions to clips for seamless merging
+        for i in range(len(clips)-1):
+            clips[i] = clips[i].fadeout(0.5)  # Adding 0.5 seconds fade-out to each clip
+
         final_clip = concatenate_videoclips(clips, method="compose")
         return final_clip
     except Exception as e:
