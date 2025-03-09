@@ -1,7 +1,10 @@
 import os
-from moviepy.editor import VideoFileClip
+from moviepy.editor import VideoFileClip, concatenate_videoclips
 from transcript import transcribe_video
 from utils import log
+from pydub import AudioSegment
+import librosa
+import numpy as np
 
 def process_clip(video_path):
     """
@@ -9,6 +12,7 @@ def process_clip(video_path):
     - Extract transcription using a more accurate method.
     - Determine the best take for repeated sentences.
     - Trim the video accordingly.
+    - Normalize and reduce noise in audio.
     
     Returns a processed VideoFileClip object.
     """
@@ -45,10 +49,14 @@ def process_clip(video_path):
     try:
         processed_clip = clip.subclip(start, end)
         log(f"Trimmed {video_path} from {start} to {end}")
-        return processed_clip
     except Exception as e:
         log(f"Error trimming video {video_path}: {e}")
         return clip
+    
+    # Process audio for normalization and noise reduction
+    processed_clip = normalize_and_denoise_audio(processed_clip)
+    
+    return processed_clip
 
 def select_best_take(transcript_segments):
     """
@@ -66,12 +74,49 @@ def select_best_take(transcript_segments):
     best = transcript_segments[0]
     return best.get("start", 0), best.get("end", best.get("start", 0) + 5)
 
+def normalize_and_denoise_audio(clip):
+    """
+    Normalize and reduce noise in the audio of the clip.
+    """
+    try:
+        # Extract audio from video clip and save it as a temporary file
+        audio = clip.audio
+        audio_filename = "temp_audio.wav"
+        audio.write_audiofile(audio_filename)
+
+        # Normalize audio and reduce noise using pydub and librosa
+        audio_clip = AudioSegment.from_wav(audio_filename)
+
+        # Normalize audio volume
+        audio_clip = audio_clip - audio_clip.dBFS  # Normalize to 0 dBFS
+
+        # Reduce noise (this is a simple placeholder for more complex noise reduction)
+        y, sr = librosa.load(audio_filename, sr=None)
+        y_denoised = librosa.effects.preemphasis(y)
+        librosa.output.write_wav("denoised_audio.wav", y_denoised, sr)
+
+        # Load the denoised audio
+        denoised_audio_clip = AudioSegment.from_wav("denoised_audio.wav")
+        denoised_audio_filename = "denoised_audio.wav"
+
+        # Replace the audio of the video clip with the denoised version
+        denoised_audio = AudioFileClip(denoised_audio_filename)
+        clip = clip.set_audio(denoised_audio)
+
+        os.remove(audio_filename)  # Clean up temporary files
+        os.remove(denoised_audio_filename)
+
+        return clip
+
+    except Exception as e:
+        log(f"Error in audio normalization or denoising: {e}")
+        return clip  # Return the original clip in case of failure
+
 def merge_clips(clips):
     """
     Merge a list of VideoFileClip objects into a single clip.
     This version adds fade-in and fade-out transitions to make the cut seamless.
     """
-    from moviepy.editor import concatenate_videoclips
     try:
         # Applying fade-in/out transitions to clips for seamless merging
         for i in range(len(clips)-1):
@@ -80,4 +125,6 @@ def merge_clips(clips):
         final_clip = concatenate_videoclips(clips, method="compose")
         return final_clip
     except Exception as e:
-        raise Exception(f"Error merging clips: {e}")
+        log(f"Error merging clips: {e}")
+        raise
+
