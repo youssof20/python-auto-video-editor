@@ -1,36 +1,36 @@
-import argparse
 import os
 import sys
 from video_processor import process_clip, merge_clips
 from utils import log
 
-def parse_args():
+def get_input_folder():
     """
-    Parse command-line arguments.
+    Prompt the user for the input folder.
     """
-    parser = argparse.ArgumentParser(
-        description="Process video clips to trim out repeats and merge the best takes."
-    )
-    parser.add_argument(
-        "--input_folder", required=True, help="Path to folder containing numbered video clips."
-    )
-    parser.add_argument(
-        "--output_file", required=True, help="Filename for the final merged video."
-    )
-    return parser.parse_args()
+    input_folder = input("Enter the path to the folder containing your video clips: ").strip()
+    
+    if not os.path.exists(input_folder):
+        sys.exit(f"Input folder '{input_folder}' does not exist.")
+    
+    return input_folder
+
+def get_output_file():
+    """
+    Prompt the user for the output file path.
+    """
+    output_file = input("Enter the output file name (e.g., final_video.mp4): ").strip()
+    return output_file
 
 def main():
-    args = parse_args()
+    # Prompt user for input and output paths
+    input_folder = get_input_folder()
+    output_file = get_output_file()
     
-    # Ensure the input folder exists
-    if not os.path.exists(args.input_folder):
-        sys.exit(f"Input folder '{args.input_folder}' does not exist.")
-
     # Get list of video files ordered by filename
     try:
         files = sorted([
-            os.path.join(args.input_folder, f)
-            for f in os.listdir(args.input_folder)
+            os.path.join(input_folder, f)
+            for f in os.listdir(input_folder)
             if f.lower().endswith((".mp4", ".mov", ".avi", ".mkv"))
         ])
     except Exception as e:
@@ -54,8 +54,8 @@ def main():
 
     try:
         final_clip = merge_clips(processed_clips)
-        final_clip.write_videofile(args.output_file, codec="libx264")
-        print(f"Final video saved as {args.output_file}")
+        final_clip.write_videofile(output_file, codec="libx264")
+        print(f"Final video saved as {output_file}")
     except Exception as e:
         sys.exit(f"Error during merging or exporting: {e}")
 
