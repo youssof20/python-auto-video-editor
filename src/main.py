@@ -1,5 +1,6 @@
 import os
 import sys
+from tqdm import tqdm  # Importing tqdm for progress bar
 from video_processor import process_clip, merge_clips
 from utils import log
 
@@ -40,9 +41,11 @@ def main():
         sys.exit("No video files found in the input folder.")
 
     processed_clips = []
-    for file in files:
+    
+    # Adding progress bar for processing clips
+    for file in tqdm(files, desc="Processing Clips", unit="clip"):
         try:
-            print(f"Processing {file}...")
+            print(f"\nProcessing {file}...")
             clip = process_clip(file)
             if clip is not None:
                 processed_clips.append(clip)
@@ -53,7 +56,9 @@ def main():
         sys.exit("No clips processed successfully.")
 
     try:
+        print("\nMerging clips...")
         final_clip = merge_clips(processed_clips)
+        print("\nExporting final video...")
         final_clip.write_videofile(output_file, codec="libx264")
         print(f"Final video saved as {output_file}")
     except Exception as e:
